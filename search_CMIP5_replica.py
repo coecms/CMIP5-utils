@@ -9,33 +9,36 @@
 #    module load python/2.7.1
 #    python search_CMIP5_replica.py -f "mon" -v "ua" -v "tas" -e "piControl" -e "historical" -e "rcp45" -m "bcc-csm1-1" -m "CCSM4" output.csv 
 #
-#  Notes concerning the above example: 
-#	- multiple arguments can be passed to "-v", "-e", "-m", "-t" and -f"; 
-#	- to pass multiple arguments, declare the option multiple times (as above);  
-#	- you can pass a different name for the output file, just by listing as last argument (output.csv in the example); 
-#	- all arguments are optional; 
-#	- failing to set any constraint will result in the entire dataset being selected.  
+# Notes concerning the above example: 
+#  - multiple arguments can be passed to "-v", "-e", "-m", "-t" and -f"; 
+#  - to pass multiple arguments, declare the option multiple times (as above);
+#  - you can pass a different name for the output file, just by listing as 
+#    last argument (output.csv in the example); 
+#  - all arguments are optional; 
+#  - failing to set any constraint will result in the entire dataset being 
+#    selected.  
 #
-#  To quickly view/browse the contents/properties of the resulting file you could do this (in bash): 
+# To quickly view the output you can use the following bash commands: 
 #
-#    cut -d"," -f1-6 CMIP5_files_in_tree.csv | sort
-#    wc CMIP5_files_in_tree.csv 
+#   cut -d"," -f1-6 CMIP5_files_in_tree.csv | sort
+#   wc CMIP5_files_in_tree.csv 
 #
-#  Notes regarding these bash commands:
-#	- the output is "sorted" by the first column, which is by variable.  
-#	- to sort by other columns, you need to rearrange the column order.  
-#	eg. Sort by mip (col 2), then experiment (col 4).  
-#  	cut -d"," -f2,4 CMIP5_files_in_tree.csv > cols_sorting.txt
-#	cut -d"," -f1,3,5,6- CMIP5_files_in_tree.csv > cols_other.txt 
-#	NB: "6-" means "column 6 and all remaining columns"
-#	paste -d"," cols_sorting.txt cols_other.txt > CMIP5_files_in_tree_rearranged.csv
+# Notes regarding these bash commands:
+#   - the output is "sorted" by the first column, which is by variable;  
+#   - to sort by other columns, you need to rearrange the column order  
+#    eg. Sort by mip (col 2), then experiment (col 4):  
+#    cut -d"," -f2,4 CMIP5_files_in_tree.csv > cols_sorting.txt
+#    cut -d"," -f1,3,5,6- CMIP5_files_in_tree.csv > cols_other.txt 
+#    NB: "6-" means "column 6 and all remaining columns"
+#    paste -d"," cols_sorting.txt cols_other.txt > CMIP5_files_in_tree_rearranged.csv
 #
 # Feel free to copy and modify this script and please report any bugs
 #
-#   NB: This code reads the paths of files under the unofficial replica tree from 
+# NB: This code reads the paths of files under the unofficial replica tree from 
 #       /home/548/lih548/esg-tree-LATEST-paths.txt 
-#       This file is updated every Monday and kindly shared by Lawson Hanson from CAWCR
-#       If you are having problems accessing it or need a more recently updated list, please let me know 
+#  This file is updated every Monday and kindly shared by Lawson Hanson (CAWCR)
+#  If you are having problems accessing it or need a more recently updated list,
+#  please let me know 
 
 import os, datetime, glob, re
 import sys, getopt   # these are needed to accept external arguments
@@ -45,20 +48,26 @@ import sys, getopt   # these are needed to accept external arguments
 
 def help():
     ''' Print out a help message and exit '''
-    print '''Takes the following arguments:\n           
-              -v / --variable    CMIP5 variable  ex tas\n           
-              -m / --model       CMIP5 model     ex GFDL-CM3\n           
-              -e / -- experiment CMIP5 experiment ex historical\n           
-              -t / --mip_table   CMIP5 MIP table   ex Amon\n           
-              -f / --frequency   valid values are: day, mon, yr, 3hr, 6hr, subhr, fx, clim\n           
-              -h / --help display this message and exit \n           
-              output file , this should always come last, arguments passed after this will be ignored\n
-              All other arguments  can be repeated, for example to select two variables  -v tas -v tasmin. All arguments are optional, failing to input any argument will return the entire dataset.\n
-              The script return all the ensembles satifying the constraints\n
-              [var1 OR var2 OR ..] AND [model1 OR model2 OR ..] AND [exp1 OR exp2 OR ...] \n
-              AND [mip1 OR mip2 OR ...] \n
-              Frequency add all the correspondent mip_tables to the mip_table list\n
-              If a constraint isn't specified for one of the fields automatically all values for that field will be selected.
+    print '''\n           
+ Takes the following arguments:\n           
+   -v / --variable    CMIP5 variable  ex tas\n           
+   -m / --model       CMIP5 model     ex GFDL-CM3\n           
+   -e / -- experiment CMIP5 experiment ex historical\n           
+   -t / --mip_table   CMIP5 MIP table   ex Amon\n           
+   -f / --frequency   valid values are: day, mon, yr, 3hr, 6hr, subhr, fx, clim\n           
+   -h / --help        display this message and exit \n           
+   output_file        this should always come last, arguments passed after this\n
+                      will be ignored\n
+ All other arguments  can be repeated, for example to select two variables:\n
+  -v tas -v tasmin .\n
+ All arguments are optional, failing to input any argument will return the\n
+ entire dataset.\n
+ The script returns all the ensembles satifying the constraints\n
+  [var1 OR var2 OR ..] AND [model1 OR model2 OR ..] AND [exp1 OR exp2 OR ...] \n
+   AND [mip1 OR mip2 OR ...] \n
+ Frequency adds all the correspondent mip_tables to the mip_table list\n
+ If a constraint isn't specified for one of the fields automatically all values\n
+ for that field will be selected.
     '''
     sys.exit()
 
@@ -132,7 +141,7 @@ outfile = 'CMIP5_files_in_tree.csv'
 # assign constraints from arguments list
 letters = 'v:m:e:t:f:h' # the : means an argument needs to be passed after the letter
 #the = means that a value is expected after the keyword
-keywords = ['variable=', 'model=', 'experiment=', 'mip_table=', 'frequency=', 'help='] 
+keywords = ['variable=', 'model=', 'experiment=', 'mip_table=', 'frequency=', 'help'] 
 opts, extraparams = getopt.getopt(sys.argv[1:],letters,keywords) 
 # starts at the second element of argv since the first one is the script name
 # extraparams are extra arguments passed after all option/keywords are assigned
