@@ -1,8 +1,8 @@
 # Paola - paolap@utas.edu.au 23rd November 2013
-# Lat changed on 10th of January 2014
+# Last changed on 11th of February 2014
 # This script reads a list of files produced by search_CMIP5_replica.py and returns a list of the CMIP5 model+ensembles that contain all the variables given as input.
 # The CMIP5 replica dataset is stored under 
-# /g/data/ua6/unofficial_ESG_replica/tmp/tree
+# /g/data1/ua6/unofficial_ESG_replica/tmp/tree
 # NB: This code reads the files details from the output of search_CMIP5_replica
 #     if not specified assumed the input file is CMIP5_files_in_tree.csv 
 # It creates two csv file called complete_ensemble.csv that lists MIP code, model, ensemble, (version) for each ensemble that has all the requested variables
