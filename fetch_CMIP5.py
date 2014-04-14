@@ -1,5 +1,10 @@
 # Paola Petrelli - paolap@utas.edu.au 4th March 2014
-# Last changed on 6th of March 2014
+# Last changed on 26th of March 2014
+# Updates list:
+#   26/03/2014 - output files and google spreadsheet are created after 
+#                 collecting data; calling process_file with multiprocessing 
+#                module to speed up md5checksum
+#   01/04/2014 - exclude the ACCESS and CSIRO models from check
 #
 # This script searches on pcmdi9.llnl.gov for all CMIP5 files responding to the constraints given as input.
 # It returns 3 files listing: the published files available on raijin (variables_replica.csv), the published files that need downloading and/or updating (variables_to_download.csv), the variable/model/experiment combination not yet published (variables_not_published).
@@ -35,8 +40,9 @@
 #    listing it as last argument (out in the example);
 #  - you need to pass at least one experiment and one variable, models are optional.
 
-import sys, getopt, urllib
+import sys, getopt, urllib, time
 import subprocess, re, itertools
+from multiprocessing import Pool
 import os.path as opath     # to manage files and dirs
 
 # help functions
@@ -84,7 +90,7 @@ def write_file():
     ''' Write info on file to download or replica output '''
     global info
     files = {"R" : orep, "D" : odown}
-    for item in info:
+    for item in info.values():
         outfile = files[item[-1]]
         outfile.write(",".join(item[0:-1])+"\n")
 
@@ -130,10 +136,11 @@ def create_wget(exp,modlist,varmips):
     miplist = list(set([i.split("_")[1] for i in varmips]))
     mips = "&cmor_table=".join(miplist) 
     variables = "&variable=".join(varlist) 
-    pcmdi_url = "http://pcmdi9.llnl.gov/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true"
+    pcmdi_url = "https://pcmdi9.llnl.gov/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true"
     print pcmdi_url 
-    wgetfile = "wgetfetch.out"
+    wgetfile = "wgetfetch2.out"
     urllib.urlretrieve(pcmdi_url,wgetfile)
+    print "Finished downloading wget file from pcmdi9.llnl.gov"
     return wgetfile 
 
 def parse_file(wgetfile,varlist,modlist,exp):
@@ -148,13 +155,11 @@ def parse_file(wgetfile,varlist,modlist,exp):
        return False 
     else:
 # select only the files lines starting as var_cmortable_model_exp ...
-       names=[]
-       urls=[]
-       md5s=[]
+       result=[]
 # if modlist empty add to it a regex string indicating model name
        if len(modlist) > 0:
           comb_constr = itertools.product(*[varlist,modlist])
-          filestrs = map("_".join, [x for x in comb_constr])
+          filestrs = ["_".join(x) for x in comb_constr]
        else:
           filestrs = [var + '_[A-Za-z0-9-.()]*_' for var in varlist] 
        for line in lines:
@@ -162,14 +167,12 @@ def parse_file(wgetfile,varlist,modlist,exp):
            if match.count(None) != len(match) and line.find(exp):
               [fname,furl,dummy,fmd5] = line.replace("'","").split()
               if dummy in ["MD5","md5"]:
-                 names.append(fname)
-                 urls.append(furl.replace("http://",""))
-                 md5s.append(fmd5)
+                 result.append([fname, furl.replace("http://",""), fmd5])
               else: 
                  print "Error in parse_file() is selecting the wrong lines!"
                  print line
                  sys.exit()
-       return [names, urls, md5s]
+       return result 
     
 
 def check_md5sum(tree_path,fmd5):
@@ -180,17 +183,17 @@ def check_md5sum(tree_path,fmd5):
 
 def process_file(result):
     ''' Check if file exist on tree and if True check md5sum '''
-    global info, count
+    info = {}
     [fname,furl,fmd5]=result
     [bool,tree_path]=tree_exist(furl)
-    info.append(get_info(fname,tree_path))
+    info[furl] = get_info(fname,tree_path)
 # if file exists in tree compare md5sum with values in wgetfile, else add to update
-    if bool and check_md5sum(tree_path,fmd5):
-       info[count].append("R")
+    if "ACCESS" in fname or "CSIRO" in fname or (bool and check_md5sum(tree_path,fmd5)):
+       info[furl].append("R")
     else:
-       info[count][-1] = "http://" + furl
-       info[count].append("D")
-    return
+       info[furl][-1] = "http://" + furl
+       info[furl].append("D")
+    return  info
 
 
 def retrieve_info(query_item):
@@ -200,7 +203,7 @@ def retrieve_info(query_item):
     var, mip = query_item[0].split("_")
     rows={}
     # add the items in info with matching var,mip,exp to rows as dictionaries 
-    for item in info:
+    for item in info.values():
         if var == item[0] and mip == item[1] and query_item[-1] == item[3]:
            key = (item[2], item[4], item[5])
            try:
@@ -237,10 +240,10 @@ def compare_query(var0,mod0,exp0):
     ''' compare the var_mod_exp combinations found with the requested ones '''
     global info, opub
     # for each el. of info: join var_mip, transform to tuple, finally convert modified info to set
-    info_set = set(map(tuple,[["_".join(x[0:2])] + x[2:-4] for x in info]))
+    info_set = set(map(tuple,[["_".join(x[0:2])] + x[2:-4] for x in info.values()]))
     # create set with all possible combinations of var_mip,model,exp based on constraints
     # if models not specified create a model list based on wget result
-    if len(mod0) < 1: mod0 = [x[2] for x in info]
+    if len(mod0) < 1: mod0 = [x[2] for x in info.values()]
     comb_query = set(itertools.product(*[var0,mod0,exp0]))
     # the difference between two sets gives combinations not published yet
     nopub_set = comb_query.difference(info_set)
@@ -251,10 +254,11 @@ def compare_query(var0,mod0,exp0):
     return nopub_set 
 
 
-def write_google(sh,nopub):
+def write_google(sh,gc,gname,nopub):
     ''' write a google spreadsheet table to summarise search '''
     import gspread
     global gmatrix
+    tic = time.time()
     for exp in exp0:
     # length of dictionary gmatrix[exp] is number of var_mip columns
     # maximum length of list in each dict inside gmatrix[exp] is number of mod/ens rows
@@ -271,7 +275,9 @@ def write_google(sh,nopub):
         except:
            work = sh.add_worksheet(title=exp,rows=str(nrow),cols=str(ncol))
       # pre-fill all values with "NP", leave 1 column and 1 row for headers 
+        print "%f s up to  create a worksheet" % (time.time() - tic)
         [work.update_cell(i,j,"NP") for j in range(3,ncol+1) for i in range(2,nrow+1)]
+        print "%f s up to fill NP " % (time.time() - tic)
       # write first two columns with all (mod,ens) pairs
         col1= [emat[var][i][0] for var in klist for i in range(len(emat[var])) ]
         col1 = list(set(col1))
@@ -295,9 +301,13 @@ def write_google(sh,nopub):
         if len(evar) > 0:
           [work.update_cell(1,ncol-evar.index(var),var) for var in evar]
     # delete the automatically created "Sheet 1" if exists
-    sh1 = sh.get_worksheet(0)
-    print sh1.title
-    if sh1.title == "Sheet 1":  sh.del_worksheet(sh1)
+    print "%f s up to written table " % (time.time() - tic)
+    sh2 = gc.open(gname)
+    try: 
+         ws = sh2.worksheet("Sheet 1")
+         sh2.del_worksheet(ws)
+    except gspread.exceptions.WorksheetNotFound:
+         print "No Sheet 1 to delete"
     return
 
 
@@ -311,7 +321,18 @@ def create_google():
     email = raw_input("Google drive account: ")
     password = getpass.getpass("Google drive password: ")
     gname = raw_input("Spreadsheet name: ")
-    gc = gspread.login(email, password)
+    try:
+      gc = gspread.login(email, password)
+    except BadAuthentication:
+      print "Username or password are wrong"
+      sys.exit()
+    except NotVerified:
+      print "Account not verified, user need to acces Google account directly first"
+      sys.exit()
+    except ServiceUnavailable:
+      print "Service unavailable, try again later"
+      sys.exit()
+     
 #Open Spreadsheet, if doesn't exist then create a new one
     try:
         spr = gc.open(gname)
@@ -324,7 +345,7 @@ def create_google():
         document = gd_client.CreateResource(document)
         print 'Created Spreadsheet: '+ gname
         spr = gc.open(gname)
-    return spr 
+    return spr,gc,gname 
 
 
 def assign_constraint():
@@ -371,7 +392,7 @@ def assign_constraint():
 
 def main():
     ''' Main program starts here '''
-    global opub, odown, orep, info, count
+    global opub, odown, orep, info
 # read inputs and assign constraints
     assign_constraint()
     fdown = outfile + '_to_download.csv'
@@ -388,37 +409,42 @@ def main():
     if opath.isfile(fdown) or opath.isfile(frep) or opath.isfile(fpub):
        print "Warning: one of the output files exists, exit to not overwrite!"
        sys.exit() 
-# open output files and write header
-    odown=open(fdown, "w")
-    odown.write("var, mip_table, model, experiment, ensemble, version, file url\n")
-    orep=open(frep, "w")
-    orep.write("var, mip_table, model, experiment, ensemble, version, filepath\n")
-    opub=open(fpub, "w")
-    opub.write("var_mip-table, model, experiment\n")
-# if google option create/open spreadsheet
-    if google: gsheet = create_google()
-    count=0
-    info=[]
+    info={}
 # loop through experiments, 1st create a wget request for exp, then parse_file 
     for exp in exp0:
         wgetfile=create_wget(exp,mod0,var0)
         result=parse_file(wgetfile,var0,mod0,exp)
 # if found any files matching constraints, process them one by one
+# using multiprocessing Pool to parallelise process_file 
+        tic = time.time()
         if result:
-           [names, urls, md5s]=result
-           for i in range(0,len(names)):
-              process_file([names[i],urls[i],md5s[i]])
-              count +=1
+           async_results = Pool().map_async(process_file, result)
+           for dinfo in async_results.get():
+               info.update(dinfo)
+        print "%f s for parallel computation." % (time.time() - tic)
+# open not published file
+    opub=open(fpub, "w")
+    opub.write("var_mip-table, model, experiment\n")
 # build all requested combinations and compare to files found
     nopub_set = compare_query(var0,mod0,exp0)
 # write replica and download output files
+# open output files and write header
+    odown=open(fdown, "w")
+    odown.write("var, mip_table, model, experiment, ensemble, version, file url\n")
+    orep=open(frep, "w")
+    orep.write("var, mip_table, model, experiment, ensemble, version, filepath\n")
     write_file()
-# if google option write summary table on google spreadsheet
-    if google: write_google(gsheet,nopub_set)
 # close all the output files
     odown.close()
     orep.close()
     opub.close()
+    print "%f s up to written files" % (time.time() - tic)
+# if google option create/open spreadsheet
+# if google option write summary table on google spreadsheet
+    if google: 
+       (gsheet,gc,gname) = create_google()
+       print "%f s up to icreate google" % (time.time() - tic)
+       write_google(gsheet,gc,gname,nopub_set)
 
 # call main()
 main()
