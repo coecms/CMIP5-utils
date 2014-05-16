@@ -452,5 +452,8 @@ def main():
        (gsheet,gc,gname) = create_google()
        write_google(gsheet,gc,gname,nopub_set)
 
-# call main()
+# check python version and then call main()
+if sys.version_info < ( 2, 7):
+    # python too old, kill the script
+    sys.exit("This script requires Python 2.7 or newer!")
 main()
