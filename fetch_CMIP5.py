@@ -5,6 +5,13 @@
 #                 collecting data; calling process_file with multiprocessing 
 #                module to speed up md5checksum
 #   01/04/2014 - exclude the ACCESS and CSIRO models from check
+# VERY IMPORTANT ISSUE!!!
+#   15/05/2014 - if using the google spreadsheet option, 
+#     gspread and the google api are not updated to work with the new style 
+#     spreadsheet, so you need to first create an old style spreadsheet and
+#     rename it. Then you can use this spreadsheet when asked by the program 
+#   To create an old style spreadsheet you can use the following link:
+#     https://g.co/oldsheets 
 #
 # This script searches on pcmdi9.llnl.gov for all CMIP5 files responding to the constraints given as input.
 # It returns 3 files listing: the published files available on raijin (variables_replica.csv), the published files that need downloading and/or updating (variables_to_download.csv), the variable/model/experiment combination not yet published (variables_not_published).
@@ -40,7 +47,7 @@
 #    listing it as last argument (out in the example);
 #  - you need to pass at least one experiment and one variable, models are optional.
 
-import sys, getopt, urllib, time
+import sys, getopt, urllib
 import subprocess, re, itertools
 from multiprocessing import Pool
 import os.path as opath     # to manage files and dirs
@@ -61,6 +68,9 @@ def help():
    - to pass multiple arguments, declare the option multiple times;\n 
    - you need to pass at least one experiment and one variable,
      models are optional.\n
+   NB if you are using the google option, read instruction in file header\n
+      to install gspread and current issues with google api and new\n 
+      spreadsheet style.\n
     '''
     sys.exit()
 
@@ -258,7 +268,6 @@ def write_google(sh,gc,gname,nopub):
     ''' write a google spreadsheet table to summarise search '''
     import gspread
     global gmatrix
-    tic = time.time()
     for exp in exp0:
     # length of dictionary gmatrix[exp] is number of var_mip columns
     # maximum length of list in each dict inside gmatrix[exp] is number of mod/ens rows
@@ -275,9 +284,8 @@ def write_google(sh,gc,gname,nopub):
         except:
            work = sh.add_worksheet(title=exp,rows=str(nrow),cols=str(ncol))
       # pre-fill all values with "NP", leave 1 column and 1 row for headers 
-        print "%f s up to  create a worksheet" % (time.time() - tic)
         [work.update_cell(i,j,"NP") for j in range(3,ncol+1) for i in range(2,nrow+1)]
-        print "%f s up to fill NP " % (time.time() - tic)
+        print "initialised spreadsheet" 
       # write first two columns with all (mod,ens) pairs
         col1= [emat[var][i][0] for var in klist for i in range(len(emat[var])) ]
         col1 = list(set(col1))
@@ -300,14 +308,14 @@ def write_google(sh,gc,gname,nopub):
       # write header for variables never published
         if len(evar) > 0:
           [work.update_cell(1,ncol-evar.index(var),var) for var in evar]
-    # delete the automatically created "Sheet 1" if exists
-    print "%f s up to written table " % (time.time() - tic)
+    # delete the automatically created "Sheet1" if exists
+    print "Data written in table "
     sh2 = gc.open(gname)
     try: 
-         ws = sh2.worksheet("Sheet 1")
+         ws = sh2.worksheet("Sheet1")
          sh2.del_worksheet(ws)
     except gspread.exceptions.WorksheetNotFound:
-         print "No Sheet 1 to delete"
+         print "No Sheet1 to delete"
     return
 
 
@@ -416,12 +424,11 @@ def main():
         result=parse_file(wgetfile,var0,mod0,exp)
 # if found any files matching constraints, process them one by one
 # using multiprocessing Pool to parallelise process_file 
-        tic = time.time()
         if result:
            async_results = Pool().map_async(process_file, result)
            for dinfo in async_results.get():
                info.update(dinfo)
-        print "%f s for parallel computation." % (time.time() - tic)
+        print "Finished md5checksum for existing files" 
 # open not published file
     opub=open(fpub, "w")
     opub.write("var_mip-table, model, experiment\n")
@@ -438,12 +445,11 @@ def main():
     odown.close()
     orep.close()
     opub.close()
-    print "%f s up to written files" % (time.time() - tic)
+    print "Finished to write output files" 
 # if google option create/open spreadsheet
 # if google option write summary table on google spreadsheet
     if google: 
        (gsheet,gc,gname) = create_google()
-       print "%f s up to icreate google" % (time.time() - tic)
        write_google(gsheet,gc,gname,nopub_set)
 
 # call main()
