@@ -1,7 +1,7 @@
 # Paola - paolap@utas.edu.au 20th November 2013
 # This script produces a file listing all the CMIP5 ensembles available on raijin.nci.org.au that satisfy the given constraints.
 # The CMIP5 replica dataset is stored under 
-# /g/data/ua6/unofficial_ESG_replica/tmp/tree
+# /g/data1/ua6/unofficial_ESG_replica/tmp/tree
 # The file list used as input is updated every Monday by Tom Remenyi (tom.remenyi@utas.edu.au).
 # It creates a csv file called CMIP5_files_in_tree.csv that lists variable, MIP code, model, ensemble, version and path on dcc for each matching ensemble
 # Example of how to run on raijin.nci.org.au
@@ -35,7 +35,7 @@
 # Feel free to copy and modify this script and please report any bugs
 #
 # NB: This code reads the paths of files under the unofficial replica tree from 
-#       /g/data/ua6/unofficial-ESG-replica/tmp/tree/esg-tree-LATEST-paths.txt 
+#       /g/data1/ua6/unofficial-ESG-replica/tmp/tree/esg-tree-LATEST-paths.txt 
 #  This file is updated every Monday and kindly shared by Tom Remenyi (UTAS)
 #  If you are having problems accessing it or need a more recently updated list,
 #  please let us know 
@@ -130,7 +130,7 @@ def assign_frequency(frq):
 # Main program starts here
 #set up input file and selected variable (or group of variables) and experiment
 #infile is updated every Monday and contains a list of all files replicated on dcc 
-infile = '/g/data/ua6/unofficial-ESG-replica/tmp/tree/esg-tree-LATEST-paths.txt'
+infile = '/g/data1/ua6/unofficial-ESG-replica/tmp/tree/esg-tree-LATEST-paths.txt'
 # assign default values to constraints
 var0 = []
 exp0 = [] 
@@ -196,8 +196,6 @@ for filepath in lines[:]:
 # if file details satisfies the constraint file added to output 
       if match_constraints(details,constraints):
          vers = find_string(bits[:-1], version)
-#  we don't need next step if file list full path
-#         newpath = "/g/data/ua6/unofficial-ESG-replica/tmp/tree/" + '/'.join(bits[:-1])
          newpath = '/'.join(bits[:-1])
          slist = details + [vers, newpath]
          sline = ','.join(slist)

@@ -1,34 +1,33 @@
 # Paola Petrelli - paolap@utas.edu.au 4th March 2014
 # Last changed on 26th of March 2014
 # Updates list:
-#   26/03/2014 - output files and google spreadsheet are created after 
+#   26/03/2014 - output files and table csv file are created after 
 #                 collecting data; calling process_file with multiprocessing 
 #                module to speed up md5checksum
 #   01/04/2014 - exclude the ACCESS and CSIRO models from check
-# VERY IMPORTANT ISSUE!!!
-#   15/05/2014 - if using the google spreadsheet option, 
-#     gspread and the google api are not updated to work with the new style 
-#     spreadsheet, so you need to first create an old style spreadsheet and
-#     rename it. Then you can use this spreadsheet when asked by the program 
-#   To create an old style spreadsheet you can use the following link:
-#     https://g.co/oldsheets 
+#   03/09/2014 trying to substitute the google file with a csv table
+#   01/12/2014 script has been divided into two steps, this is first step fetch_step1.py
+#     that runs search on ESGF node and can be run interactively, the second step fetch_step2.py should be run in the queue
+#   21/05/2015  comments updated, introduce argparse to manage inputs, added extra argument
+#     "node" to choose automatically between different nodes: only pcmdi and dkrz (default) are available at the moment
 #
-# This script searches on pcmdi9.llnl.gov for all CMIP5 files responding to the constraints given as input.
-# It returns 3 files listing: the published files available on raijin (variables_replica.csv), the published files that need downloading and/or updating (variables_to_download.csv), the variable/model/experiment combination not yet published (variables_not_published).
+# Retrieves a wget script (wget_<experiment>.out) listing all the CMIP5
+# published files responding to the constraints passed as arguments.
+# The search is run on one of the ESGF node but it searches through all the available
+# nodes for the latest version. Multiple arguments can be passed to -e, -v, -m. At least one variable and experiment
+# should be specified but models are optionals. The search is limited to the first 10000 matches,
+# to change this you have to change the pcmdi_url variable in the code.
+# The second step returns 3 files listing: the published files available on raijin (variables_replica.csv),
+# the published files that need downloading and/or updating (variables_to_download.csv),
+# the variable/model/experiment combination not yet published (variables_not_published).
 # Uses md5 checksum to determine if a file already existing on raijin is exactly the same as the latest published version
-# If the "google" option is selected it returns also a google spreadsheet summarising the search results. 
-# If using the google option, you will need a google drive account and to install the python packages gdata and gspread
-# To download and install on raijin:
-#    git clone https://github.com/burnash/gspread.git
-#    cd gspread
-#    module unload intel-fc intel-cc
-#    module load python
-#    python setup.py install --user
-#    cd 
-#    wget https://gdata-python-client.googlecode.com/files/gdata-2.0.18.tar.gz
-#    tar -xvzf gdata-2.0.18.tar.gz
-#    cd gdata-2.0.18
-#    python setup.py install --user
+# If you have to parse a big number of files, you can speed up the process by using multithread module "Pool"
+# if you're doing this you should run the second step in the queue, which is the reason why the script is split into 2 steps.
+# To do that you can change the threads number from 1 (to run interactively) to the number of cpus you're requesting, in line 340 
+#           async_results = Pool(16).map_async(process_file, result)
+# The maximum number of threads depends on the number of cpus you're using, in above example 16 cpus.
+#
+# If the "table" option is selected it returns also a table csv file summarising the search results. 
 #
 # The CMIP5 replica data is stored on raijin.nci.org.au under
 # /g/data1/ua6/unofficial-ESG-replica/tmp/tree
@@ -36,43 +35,64 @@
 # Example of how to run on raijin.nci.org.au
 #
 #    module load python/2.7.3  (default on raijin)
-#    python fetch_CMIP5.py  -v ua_Amon -v tos_Omon -m CCSM4 -e rcp45 -g out
+#    python fetch_step2.py  -v ua_Amon tos_Omon -m CCSM4 -e rcp45 -o out -t
 # NB needs python version 2.7 or more recent
 #
 #  - the variable argument is passed as variable-name_cmip-table, this avoids confusion if looking for variables from different cmip tables
 #  - multiple arguments can be passed to "-v", "-m", "-e";
-#  - to pass multiple arguments, declare the option multiple times (as above);
-#  - default output root is variables_
-#  - you can pass a different name for the root of the output files, just by 
-#    listing it as last argument (out in the example);
+#  - to pass multiple arguments, declare the option once followed by all the desired values (as above);
+#  - default output files root is "variables"
 #  - you need to pass at least one experiment and one variable, models are optional.
+#  - output file is optional, default is "variables"
+#  - table is optional, default is False
 
-import sys, getopt, urllib
+import sys, argparse
 import subprocess, re, itertools
 from multiprocessing import Pool
 import os.path as opath     # to manage files and dirs
 
 # help functions
-def help():
-    ''' Print out a help message and exit '''
-    print '''\n
-   Takes the following arguments:\n
-   -v / --variable    combination of CMIP5 variable & cmip_table Ex. tas_Amon\n
-   -e / --experiment  CMIP5 experiment  Ex. historical\n
-   -m / --model       CMIP5 model     ex GFDL-CM3\n
-   -g / --google      google table option\n
-   -h / --help        display this message and exit \n
-   output_file        this should always come last, arguments passed after this
-                      will be ignored\n
-   - multiple arguments can be passed to "-v", "-m", "-e";\n
-   - to pass multiple arguments, declare the option multiple times;\n 
-   - you need to pass at least one experiment and one variable,
-     models are optional.\n
-   NB if you are using the google option, read instruction in file header\n
-      to install gspread and current issues with google api and new\n 
-      spreadsheet style.\n
-    '''
+def VarCmipTable(v):
+    if "_" not in v:
+      raise TypeError("String '%s' does not match required format: var_cmip-table, ie tas_Amon"%(v,))
+    else:
+      return v
+
+def parse_input():
+    ''' Parse input arguments '''
+    parser = argparse.ArgumentParser(description='''Retrieves a wget script (wget_<experiment>.out) listing all the CMIP5
+            published files responding to the constraints passed as arguments.
+            The search is run on one of the ESGF node but it searches through all the available
+            nodes for the latest version. Multiple arguments can be passed to -e, -v, -m. At least one variable and experiment
+            should be specified but models are optionals. The search is limited to the first 1000 matches,
+            to change this you have to change the pcmdi_url variable in the code.''')
+    parser.add_argument('-e','--experiment', type=str, nargs="*", help='CMIP5 experiment', required=True)
+    parser.add_argument('-m','--model', type=str, nargs="*", help='', required=False)
+    parser.add_argument('-v','--variable', type=VarCmipTable, nargs="*", help='combination of CMIP5 variable & cmip_table Ex. tas_Amon', required=True)
+    parser.add_argument('-t','--table', action='store_true', default='store_false', help="csv table option, default is False",
+                        required=False)
+    parser.add_argument('-o','--output', type=str, nargs="?", default="variables", help='''output files root, 
+                       default is variables''', required=False)
+    return vars(parser.parse_args())
+
     sys.exit()
+
+
+def assign_constraint():
+    ''' Assign default values and input to constraints '''
+    global var0, exp0, mod0, table, outfile
+    var0 = []
+    exp0 = []
+    mod0 = []
+    outfile = 'variables'
+# assign constraints from arguments list
+    args = parse_input()
+    var0=args["variable"]
+    mod0=args["model"]
+    exp0=args["experiment"]
+    table=args["table"]
+    outfile=args["output"]
+    return
 
 
 def correct_model(model):
@@ -134,24 +154,6 @@ def get_info(fname,path):
     return finfo
 
 
-def create_wget(exp,modlist,varmips):
-    ''' create wget call for each query (ie each variable/exp/model combination) '''
-# apply recursively correct_model to each input model
-    models = ""
-    if len(modlist) > 0:
-      modlist = map(correct_model, [x for x in modlist])
-      models = "&model=" + "&model=".join(modlist) 
-# split var and mip table varmips
-    varlist = list(set([i.split("_")[0] for i in varmips]))
-    miplist = list(set([i.split("_")[1] for i in varmips]))
-    mips = "&cmor_table=".join(miplist) 
-    variables = "&variable=".join(varlist) 
-    pcmdi_url = "https://pcmdi9.llnl.gov/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true"
-    print pcmdi_url 
-    wgetfile = "wgetfetch2.out"
-    urllib.urlretrieve(pcmdi_url,wgetfile)
-    print "Finished downloading wget file from pcmdi9.llnl.gov"
-    return wgetfile 
 
 def parse_file(wgetfile,varlist,modlist,exp):
     ''' extract file list from wget file '''
@@ -230,7 +232,7 @@ def retrieve_info(query_item):
 
 
 def result_matrix(querypub,exp0):
-    ''' Build a matrix of the results to output to google table '''
+    ''' Build a matrix of the results to output to csv table '''
     global gmatrix
     # querypub contains only published combinations
     # initialize dictionary of exp/matrices
@@ -259,14 +261,13 @@ def compare_query(var0,mod0,exp0):
     nopub_set = comb_query.difference(info_set)
     for item in nopub_set:
         opub.write(",".join(item) + "\n")
-    # write a matrix to pass results to google table in suitable format
-    if google: result_matrix(comb_query.difference(nopub_set),exp0)
+    # write a matrix to pass results to csv table in suitable format
+    if table: result_matrix(comb_query.difference(nopub_set),exp0)
     return nopub_set 
 
 
-def write_google(sh,gc,gname,nopub):
-    ''' write a google spreadsheet table to summarise search '''
-    import gspread
+def write_table(nopub):
+    ''' write a csv table to summarise search '''
     global gmatrix
     for exp in exp0:
     # length of dictionary gmatrix[exp] is number of var_mip columns
@@ -278,129 +279,40 @@ def write_google(sh,gc,gname,nopub):
     # calculate ncol,nrow keeping into account var never published
         ncol = len(klist) +2 + len(evar)
         nrow = max([len(emat[x]) for x in klist]) +1
-    # open/create a worksheet for each experiment
+    # open/create a csv file for each experiment
         try:
-           work = sh.worksheet(exp) 
+           csv = open(exp+".csv","w") 
         except:
-           work = sh.add_worksheet(title=exp,rows=str(nrow),cols=str(ncol))
+           print "Can not open file " + exp + ".csv" 
+        csv.write(" model_ensemble/variable," + ",".join(klist+evar) + "\n") 
       # pre-fill all values with "NP", leave 1 column and 1 row for headers 
-        [work.update_cell(i,j,"NP") for j in range(3,ncol+1) for i in range(2,nrow+1)]
-        print "initialised spreadsheet" 
       # write first two columns with all (mod,ens) pairs
         col1= [emat[var][i][0] for var in klist for i in range(len(emat[var])) ]
         col1 = list(set(col1))
         col1_sort=sorted(col1)
-        row={}
-        ind=1
       # write first column with mod_ens combinations & save row indexes in dict where keys are (mod,ens) combination
+      #  print col1_sort
         for modens in col1_sort:
-            ind+=1
-            work.update_cell(ind,1,modens[0])  
-            work.update_cell(ind,2,modens[1])  
-            row[modens]=ind  
-      # start writing var_mip column one by one
-        for var in klist:
-            x = klist.index(var)
-            work.update_cell(1,x+3,var)
-            for item in emat[var]:
-                if item[0] in row.keys(): 
-                   work.update_cell(row[item[0]],x+3,item[1])
-      # write header for variables never published
-        if len(evar) > 0:
-          [work.update_cell(1,ncol-evar.index(var),var) for var in evar]
-    # delete the automatically created "Sheet1" if exists
+            csv.write(modens[0] + "_" + modens[1]) 
+            for var in klist:
+                line = [item[1].replace(", " , " (")   for item in emat[var] if item[0] == modens]
+                if len(line) > 0:
+                   csv.write(", " +  " ".join(line) + ")")
+                else:
+                   csv.write(",NP")
+            if len(evar) > 0:
+               for var in evar:
+                   csv.write(",NP")
+            csv.write("\n")
+        csv.close()
     print "Data written in table "
-    sh2 = gc.open(gname)
-    try: 
-         ws = sh2.worksheet("Sheet1")
-         sh2.del_worksheet(ws)
-    except gspread.exceptions.WorksheetNotFound:
-         print "No Sheet1 to delete"
     return
-
-
-def create_google():
-    ''' create a google spreadsheet if doesn't exists 
-        copied from http://diorsman.me/2013/11/05/create-new-google-spreadsheet-in-python/ '''
-    import gspread
-    import gdata.docs.client
-    import getpass 
-    # if using in batch these 3 needs to be given not interactively 
-    email = raw_input("Google drive account: ")
-    password = getpass.getpass("Google drive password: ")
-    gname = raw_input("Spreadsheet name: ")
-    try:
-      gc = gspread.login(email, password)
-    except BadAuthentication:
-      print "Username or password are wrong"
-      sys.exit()
-    except NotVerified:
-      print "Account not verified, user need to acces Google account directly first"
-      sys.exit()
-    except ServiceUnavailable:
-      print "Service unavailable, try again later"
-      sys.exit()
-     
-#Open Spreadsheet, if doesn't exist then create a new one
-    try:
-        spr = gc.open(gname)
-        print "Spreadsheet exists, it will be overwritten: ", gname 
-    except:
-        source = 'CMIP5 Spreadsheet'
-        gd_client = gdata.docs.client.DocsClient()
-        gd_client.ClientLogin(email, password, source)
-        document = gdata.docs.data.Resource(type='spreadsheet', title=gname)
-        document = gd_client.CreateResource(document)
-        print 'Created Spreadsheet: '+ gname
-        spr = gc.open(gname)
-    return spr,gc,gname 
-
-
-def assign_constraint():
-    ''' Assign default values and input to constraints '''
-    global var0, exp0, mod0, google, outfile
-    var0 = []
-    exp0 = []
-    mod0 = []
-    outfile = 'variables'
-#  google option is False by default, activate to create a summary google table
-    google = False
-# assign constraints from arguments list
-    letters = 'v:m:e:gh' # the : means an argument needs to be passed after the letter
-#the = means that a value is expected after the keyword
-    keywords = ['variable=', 'model=', 'experiment=', 'google', 'help']
-    opts, extraparams = getopt.getopt(sys.argv[1:],letters,keywords)
-# starts at the second element of argv since the first one is the script name
-# extraparams are extra arguments passed after all option/keywords are assigned
-# in this case the first part of the output file
-# opts is a list containing the pair "option"/"value"
-# if no variable or experiment are defined issue a warning
-    for o,p in opts:
-       if o in ['-v','--variable']:
-         if "_" in p:
-            var0.append(p)
-         else:
-            print "Warning: -v/--variable takes var_miptable as input" 
-            sys.exit()
-       elif o in ['-m','--model']:
-         mod0.append(p)
-       elif o in ['-e','--experiment']:
-         exp0.append(p)
-       elif o in ['-g','--google']:
-         google = True 
-       elif o in ['-h','--help']:
-         help()
-    for p in extraparams:
-       outfile = p
-    if len(var0) == 0 or len(exp0) == 0 : 
-       print "Error: at least 1 variable and 1 experiment need to be defined"
-       sys.exit()
-    return
-
 
 def main():
     ''' Main program starts here '''
     global opub, odown, orep, info
+# somefile is false starting turns to true if at elast one file found
+    somefile=False
 # read inputs and assign constraints
     assign_constraint()
     fdown = outfile + '_to_download.csv'
@@ -420,15 +332,19 @@ def main():
     info={}
 # loop through experiments, 1st create a wget request for exp, then parse_file 
     for exp in exp0:
-        wgetfile=create_wget(exp,mod0,var0)
+        wgetfile = "wget_" + exp + ".out"
         result=parse_file(wgetfile,var0,mod0,exp)
 # if found any files matching constraints, process them one by one
 # using multiprocessing Pool to parallelise process_file 
         if result:
-           async_results = Pool().map_async(process_file, result)
+           async_results = Pool(1).map_async(process_file, result)
            for dinfo in async_results.get():
                info.update(dinfo)
+           somefile=True
         print "Finished md5checksum for existing files" 
+# if it couldn't find any file for any experiment then exit
+    if not somefile: 
+     sys.exit("No files found for any of the experiments, exiting!") 
 # open not published file
     opub=open(fpub, "w")
     opub.write("var_mip-table, model, experiment\n")
@@ -446,11 +362,10 @@ def main():
     orep.close()
     opub.close()
     print "Finished to write output files" 
-# if google option create/open spreadsheet
-# if google option write summary table on google spreadsheet
-    if google: 
-       (gsheet,gc,gname) = create_google()
-       write_google(gsheet,gc,gname,nopub_set)
+# if table option create/open spreadsheet
+# if table option write summary table in csv file
+    if table: 
+       write_table(nopub_set)
 
 # check python version and then call main()
 if sys.version_info < ( 2, 7):
