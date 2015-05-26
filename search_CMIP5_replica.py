@@ -18,20 +18,6 @@
 #  - failing to set any constraint will result in the entire dataset being 
 #    selected.  
 #
-# To quickly view the output you can use the following bash commands: 
-#
-#   cut -d"," -f1-6 CMIP5_files_in_tree.csv | sort
-#   wc CMIP5_files_in_tree.csv 
-#
-# Notes regarding these bash commands:
-#   - the output is "sorted" by the first column, which is by variable;  
-#   - to sort by other columns, you need to rearrange the column order  
-#    eg. Sort by mip (col 2), then experiment (col 4):  
-#    cut -d"," -f2,4 CMIP5_files_in_tree.csv > cols_sorting.txt
-#    cut -d"," -f1,3,5,6- CMIP5_files_in_tree.csv > cols_other.txt 
-#    NB: "6-" means "column 6 and all remaining columns"
-#    paste -d"," cols_sorting.txt cols_other.txt > CMIP5_files_in_tree_rearranged.csv
-#
 # Feel free to copy and modify this script and please report any bugs
 #
 # NB: This code reads the paths of files under the unofficial replica tree from 
