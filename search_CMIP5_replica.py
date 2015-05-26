@@ -36,7 +36,7 @@
 #
 # NB: This code reads the paths of files under the unofficial replica tree from 
 #       /g/data1/ua6/unofficial-ESG-replica/tmp/tree/esg-tree-LATEST-paths.txt 
-#  This file is updated every Monday and kindly shared by Tom Remenyi (UTAS)
+#  This file is updated every Monday 
 #  If you are having problems accessing it or need a more recently updated list,
 #  please let us know 
 
