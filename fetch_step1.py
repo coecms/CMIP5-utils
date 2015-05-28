@@ -116,9 +116,9 @@ def assign_constraint():
     args = parse_input()
     var0=args["variable"] 
     mod0=args["model"] 
+    if mod0==None: mod0=[]
     exp0=args["experiment"] 
     node=args["node"][0] 
-    print node
     return
 
 
