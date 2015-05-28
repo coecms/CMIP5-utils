@@ -88,7 +88,7 @@ def assign_constraint():
 # assign constraints from arguments list
     args = parse_input()
     var0=args["variable"]
-    mod0=args["model"]
+    if args["model"]: mod0=args["model"]
     exp0=args["experiment"]
     table=args["table"]
     outfile=args["output"]
