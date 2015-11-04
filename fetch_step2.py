@@ -3,7 +3,7 @@
 # Updates list:
 #   26/03/2014 - output files and table csv file are created after 
 #                 collecting data; calling process_file with multiprocessing 
-#                module to speed up md5checksum
+#               module to speed up hash checksum (md5/sha256) 
 #   01/04/2014 - exclude the ACCESS and CSIRO models from check
 #   03/09/2014 trying to substitute the google file with a csv table
 #   01/12/2014 script has been divided into two steps, this is first step fetch_step1.py
@@ -20,7 +20,7 @@
 # The second step returns 3 files listing: the published files available on raijin (variables_replica.csv),
 # the published files that need downloading and/or updating (variables_to_download.csv),
 # the variable/model/experiment combination not yet published (variables_not_published).
-# Uses md5 checksum to determine if a file already existing on raijin is exactly the same as the latest published version
+# Uses md5/sha256 checksum to determine if a file already existing on raijin is exactly the same as the latest published version
 # If you have to parse a big number of files, you can speed up the process by using multithread module "Pool"
 # if you're doing this you should run the second step in the queue, which is the reason why the script is split into 2 steps.
 # To do that you can change the threads number from 1 (to run interactively) to the number of cpus you're requesting, in line 340 
@@ -177,9 +177,9 @@ def parse_file(wgetfile,varlist,modlist,exp):
        for line in lines:
            match = [re.search(pat,line) for pat in filestrs]
            if match.count(None) != len(match) and line.find(exp):
-              [fname,furl,dummy,fmd5] = line.replace("'","").split()
-              if dummy in ["MD5","md5"]:
-                 result.append([fname, furl.replace("http://",""), fmd5])
+              [fname,furl,hash_type,fhash] = line.replace("'","").split()
+              if hash_type in ["SHA256","sha256","md5","MD5"]:
+                 result.append([fname, furl.replace("http://",""), fhash, hash_type])
               else: 
                  print "Error in parse_file() is selecting the wrong lines!"
                  print line
@@ -187,20 +187,22 @@ def parse_file(wgetfile,varlist,modlist,exp):
        return result 
     
 
-def check_md5sum(tree_path,fmd5):
-    ''' Execute md5sum on file on tree and return True,f same as in wget file ''' 
-    tree_md5 = subprocess.check_output(["md5sum", tree_path]).split()[0]
-    return tree_md5 == fmd5
+def check_hash(tree_path,fhash,hash_type):
+    ''' Execute md5sum/sha256sum on file on tree and return True,f same as in wget file '''
+    hash_cmd="md5sum"
+    if hash_type in ["SHA256","sha256"]: hash_cmd="sha256sum"
+    tree_hash = subprocess.check_output([hash_cmd, tree_path]).split()[0]
+    return tree_hash == fhash
 
 
 def process_file(result):
-    ''' Check if file exist on tree and if True check md5sum '''
+    ''' Check if file exist on tree and if True check md5/sha265 hash '''
     info = {}
-    [fname,furl,fmd5]=result
+    [fname,furl,fhash,hash_type]=result
     [bool,tree_path]=tree_exist(furl)
     info[furl] = get_info(fname,tree_path)
-# if file exists in tree compare md5sum with values in wgetfile, else add to update
-    if "ACCESS" in fname or "CSIRO" in fname or (bool and check_md5sum(tree_path,fmd5)):
+# if file exists in tree compare md5/sha256 with values in wgetfile, else add to update
+    if "ACCESS" in fname or "CSIRO" in fname or (bool and check_hash(tree_path,fhash,hash_type)):
        info[furl].append("R")
     else:
        info[furl][-1] = "http://" + furl
@@ -341,7 +343,7 @@ def main():
            for dinfo in async_results.get():
                info.update(dinfo)
            somefile=True
-        print "Finished md5checksum for existing files" 
+        print "Finished checksum for existing files" 
 # if it couldn't find any file for any experiment then exit
     if not somefile: 
      sys.exit("No files found for any of the experiments, exiting!") 
