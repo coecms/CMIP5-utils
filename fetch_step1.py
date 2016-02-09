@@ -10,6 +10,7 @@
 #     that runs search on ESGF node and can be run interactively, the second step fetch_step2.py should be run in the queue
 #   21/05/2015  comments updated, introduce argparse to manage inputs, added extra argument
 #     "node" to choose automatically between different nodes: only pcmdi and dkrz (default) are available at the moment
+#   09/02/2016 pmcdi9.llnl.gov changed to pcmdi.llnl.gov, in step2 added extra file path checks to take into account that servers pcmdi3/7/9 are now aims3
 #
 # Retrieves a wget script (wget_<experiment>.out) listing all the CMIP5
 # published files responding to the constraints passed as arguments.
@@ -99,7 +100,7 @@ def create_wget(exp,modlist,varmips,node):
 # builds url to be passed depending on constraints and chosen node 
     pcmdi_url = "http://esgf-data.dkrz.de/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true&limit=10000"
 #    pcmdi_url = "http://esgf-data.dkrz.de/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true&limit=10000&offset=10000"
-    if node=='pcmdi': pcmdi_url = "http://pcmdi9.llnl.gov/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true&limit=10000"
+    if node=='pcmdi': pcmdi_url = "http://pcmdi.llnl.gov/esg-search/wget?experiment=" + exp + "&cmor_table=" + mips + "&project=CMIP5" + models + "&variable=" + variables + "&replica=false&latest=true&limit=10000"
     print pcmdi_url 
     urllib.urlretrieve(pcmdi_url,wgetfile)
     print "Finished downloading wget file from " + pcmdi_url.split("/")[2]

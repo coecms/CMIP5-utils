@@ -10,6 +10,7 @@
 #     that runs search on ESGF node and can be run interactively, the second step fetch_step2.py should be run in the queue
 #   21/05/2015  comments updated, introduce argparse to manage inputs, added extra argument
 #     "node" to choose automatically between different nodes: only pcmdi and dkrz (default) are available at the moment
+#   09/02/2016 pmcdi9.llnl.gov changed to pcmdi.llnl.gov, in step2 added extra file path checks to take into account that servers pcmdi3/7/9 are now aims3
 #
 # Retrieves a wget script (wget_<experiment>.out) listing all the CMIP5
 # published files responding to the constraints passed as arguments.
@@ -200,6 +201,16 @@ def process_file(result):
     info = {}
     [fname,furl,fhash,hash_type]=result
     [bool,tree_path]=tree_exist(furl)
+# some servers have updated name: for ex pcmdi9.llnl.gov is now aims3.llnl.gov so we need to substitute and check that too
+    print furl, bool
+    if not bool and furl[0:14]=='aims3.llnl.gov':
+         for num in [3,7,9]:
+           other_furl=furl.replace('aims3','pcmdi'+str(num)) 
+           print "other_furl  ", other_furl
+           [bool,tree_path]=tree_exist(other_furl)
+           if bool:
+              print "bool after extra check for num ", bool, num
+              break
     info[furl] = get_info(fname,tree_path)
 # if file exists in tree compare md5/sha256 with values in wgetfile, else add to update
     if "ACCESS" in fname or "CSIRO" in fname or (bool and check_hash(tree_path,fhash,hash_type)):
